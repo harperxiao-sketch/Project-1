@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Duchamp Fountain – Word Deconstructor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: black; }
+        canvas { display: block; cursor: crosshair; }
+    </style>
+</head>
+<body>
+<script>
+/* ===== CONFIGURATION ===== */
+// Put your image file (fountain.jpg) in the same folder as this HTML file.
+// If the image fails to load, a fallback shape will be drawn automatically.
+
+let inputWord = "";
+let isTyping = false;
+let typingX = 0, typingY = 0;
+let cursorBlink = 0;
+let urinalImg;               // will hold your image
+let animationState = "idle";  // idle, moving, deconstructing, complete
+let wordX = 0, wordY = 0;
+let deconstructedLetters = [];
+
+const fontList = [
+    'Georgia', 'Times New Roman', 'Arial', 'Helvetica',
+    'Verdana', 'Courier New', 'Impact', 'Comic Sans MS',
+    'Palatino', 'Garamond', 'Trebuchet MS'
+];
+
+/* ===== PRELOAD ===== */
+function preload() {
+    // Try to load your image – change the filename if yours is different
+    urinalImg = loadImage('fountain.jpg', 
+        () => console.log("✅ Image loaded successfully"),
+        () => {
+            console.log("⚠️ Image not found – using fallback shape");
+            // Fallback: create a simple graphic
+            urinalImg = createGraphics(300, 400);
+            urinalImg.background(0, 0); // transparent
+            urinalImg.fill(100, 120, 140, 200);
+            urinalImg.stroke(150, 170, 190);
+            urinalImg.strokeWeight(3);
+            urinalImg.beginShape();
+            urinalImg.vertex(80, 350);
+            urinalImg.vertex(60, 120);
+            urinalImg.vertex(150, 60);
+            urinalImg.vertex(240, 120);
+            urinalImg.vertex(220, 350);
+            urinalImg.endShape(CLOSE);
+        }
+    );
+}
+
+/* ===== SETUP ===== */
+function setup() {
+    createCanvas(windowWidth, windowHeight);
+    wordX = -200;
+    wordY = height / 2;
+    // p5.js automatically handles mouse and key events on the canvas
+}
+
+/* ===== DRAW ===== */
+function draw() {
+    background(0); // pure black
+
+    // Draw the central image (or fallback)
+    drawUrinal();
+
+    // Animation states
+    if (animationState === "moving") {
+        animateWord();
+    } else if (animationState === "deconstructing") {
+        deconstructWord();
+    } else if (animationState === "complete") {
+        displayDeconstructedLetters();
+    }
+
+    // Typing interface (only if typing)
+    if (isTyping) {
+        drawTypingInterface();
+    }
+
+    // Cursor blink
+    cursorBlink = (cursorBlink + 0.05) % 1;
+}
+
+function drawUrinal() {
+    if (urinalImg) {
+        let w = min(400, width * 0.5);
+        let h = (w / urinalImg.width) * urinalImg.height;
+        imageMode(CENTER);
+        image(urinalImg, width/2, height/2, w, h);
+    }
+}
+
+/* ===== MOUSE ===== */
+function mousePressed() {
+    // Start typing wherever the user clicks
+    resetAll();
+    isTyping = true;
+    typingX = mouseX;
+    typingY = mouseY;
+    inputWord = "";
+}
+
+/* ===== KEYBOARD ===== */
+function keyPressed() {
+    if (!isTyping) return true; // ignore if not typing
+
+    if (keyCode === ESCAPE) {
+        // Cancel typing
+        isTyping = false;
+        inputWord = "";
+        return false;
+    }
+
+    if (keyCode === ENTER || keyCode === RETURN) {
+        if (inputWord.length > 0) {
+            submitWord();
+        }
+        return false;
+    }
+
+    if (keyCode === BACKSPACE) {
+        inputWord = inputWord.slice(0, -1);
+        return false;
+    }
+
+    // Accept only letters
+    if (key.length === 1 && /[a-zA-Z]/.test(key)) {
+        if (inputWord.length < 12) {
+            inputWord += key.toUpperCase();
+        }
+        return false;
+    }
+
+    return true;
+}
+
+/* ===== TYPING INTERFACE ===== */
+function drawTypingInterface() {
+    // Semi-transparent background for readability
+    fill(30, 30, 30, 200);
+    noStroke();
+    rectMode(CENTER);
+    rect(typingX, typingY - 25, 300, 50, 8);
+
+    // Current word in white
+    fill(255);
+    textFont('Courier New');
+    textSize(28);
+    textAlign(CENTER, CENTER);
+    text(inputWord, typingX, typingY - 25);
+
+    // Blinking cursor
+    if (cursorBlink < 0.5) {
+        let cursorX = typingX + textWidth(inputWord) / 2 + 5;
+        stroke(255);
+        strokeWeight(2);
+        line(cursorX, typingY - 40, cursorX, typingY - 10);
+    }
+}
+
+/* ===== SUBMIT WORD ===== */
+function submitWord() {
+    isTyping = false;
+    // Start animation from the click position
+    wordX = typingX;
+    wordY = typingY;
+    // If word is already near or past the center, reset to left
+    if (wordX > width/2 - 100) {
+        wordX = -200;
+        wordY = height / 2;
+    }
+    animationState = "moving";
+    prepareDeconstruction();
+}
+
+/* ===== PREPARE DECONSTRUCTION ===== */
+function prepareDeconstruction() {
+    deconstructedLetters = [];
+    let letters = inputWord.split('');
+    for (let i = 0; i < letters.length; i++) {
+        let ltr = letters[i];
+        let fontSize = random(40, 80);
+        let fontName = random(fontList);
+        let graphic = createLetterGraphic(ltr, fontSize, fontName);
+        deconstructedLetters.push({
+            letter: ltr,
+            graphic: graphic,
+            x: width/2 + 200,
+            y: height/2,
+            targetX: width/2 + 200 + random(50, 250),
+            targetY: height/2 - 150 + i * 60,
+            rotation: 0,
+            targetRotation: random(-PI/2, PI/2),
+            scale: 0.1,
+            targetScale: 1,
+            velocityX: random(-1, 1),
+            velocityY: random(-1, 1),
+            arrived: false,
+            spinSpeed: random(-0.02, 0.02)
+        });
+    }
+}
+
+/* ===== CREATE LETTER GRAPHIC ===== */
+function createLetterGraphic(letter, fontSize, fontName) {
+    let g = createGraphics(100, 100);
+    g.background(0, 0); // transparent
+    g.textFont(fontName);
+    g.textSize(fontSize);
+    g.fill(255);
+    g.noStroke();
+    g.textAlign(CENTER, CENTER);
+    g.text(letter, 50, 50);
+    // Subtle glow
+    g.drawingContext.shadowBlur = 15;
+    g.drawingContext.shadowColor = 'rgba(255,255,255,0.5)';
+    g.text(letter, 50, 50);
+    g.drawingContext.shadowBlur = 0;
+    return g;
+}
+
+/* ===== ANIMATION STAGES ===== */
+function animateWord() {
+    let targetX = width/2;
+    let targetY = height/2;
+    wordX += (targetX - wordX) * 0.05;
+    wordY += (targetY - wordY) * 0.05;
+
+    // Draw moving word
+    push();
+    textFont('Georgia');
+    textSize(48);
+    fill(255, 230);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    drawingContext.shadowBlur = 25;
+    drawingContext.shadowColor = 'white';
+    text(inputWord, wordX, wordY);
+    drawingContext.shadowBlur = 0;
+    pop();
+
+    if (dist(wordX, wordY, targetX, targetY) < 20) {
+        animationState = "deconstructing";
+    }
+}
+
+function deconstructWord() {
+    let allArrived = true;
+    for (let i = 0; i < deconstructedLetters.length; i++) {
+        let l = deconstructedLetters[i];
+        if (!l.arrived) {
+            l.x += (l.targetX - l.x) * 0.07;
+            l.y += (l.targetY - l.y) * 0.07;
+            l.x += l.velocityX;
+            l.y += l.velocityY;
+            l.rotation += l.spinSpeed;
+            l.scale += (l.targetScale - l.scale) * 0.1;
+
+            let d = dist(l.x, l.y, l.targetX, l.targetY);
+            if (d < 8 && abs(l.scale - 1) < 0.05) {
+                l.arrived = true;
+                l.velocityX = 0;
+                l.velocityY = 0;
+            } else {
+                allArrived = false;
+            }
+        }
+        drawOneLetter(l);
+    }
+    if (allArrived) {
+        animationState = "complete";
+    }
+}
+
+function displayDeconstructedLetters() {
+    for (let i = 0; i < deconstructedLetters.length; i++) {
+        let l = deconstructedLetters[i];
+        let floatY = sin(frameCount * 0.03 + i) * 2;
+        push();
+        translate(l.x, l.y + floatY);
+        rotate(l.rotation + sin(frameCount * 0.02 + i) * 0.03);
+        scale(l.scale);
+        imageMode(CENTER);
+        image(l.graphic, 0, 0, 80, 80);
+        pop();
+
+        // Optional dashed line (comment out if you don't want it)
+        if (i < deconstructedLetters.length - 1) {
+            let next = deconstructedLetters[i + 1];
+            stroke(255, 80);
+            strokeWeight(1);
+            drawingContext.setLineDash([5, 4]);
+            line(l.x, l.y, next.x, next.y);
+            drawingContext.setLineDash([]);
+        }
+    }
+}
+
+function drawOneLetter(l) {
+    push();
+    translate(l.x, l.y);
+    rotate(l.rotation);
+    scale(l.scale);
+    imageMode(CENTER);
+    image(l.graphic, 0, 0, 80, 80);
+    pop();
+}
+
+function resetAll() {
+    deconstructedLetters = [];
+    inputWord = "";
+    animationState = "idle";
+}
+
+/* ===== RESIZE ===== */
+function windowResized() {
+    resizeCanvas(windowWidth, windowHeight);
+}
+</script>
+</body>
+</html>
